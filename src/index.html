@@ -114,6 +114,7 @@
   <button class="btn btn-primary mt-2" onclick="navigator.clipboard.writeText(dataStr.value)">📋 Copy</button>
   <button class="btn btn-primary mt-2" onclick="runCode()">🏃‍♂️ Run</button>
   <button class="btn btn-primary mt-2" onclick="saveFile()" id="saveFileBtn">💾 Save File</button>
+  <a id="viewGist">👁 View Gist</a>
 </dialog>
 
 <div id="fullScreen" style="display:none">
@@ -145,12 +146,15 @@ const renderFiles = files => `<ul>${files.map(f => `<li>📄 <button class="btn 
 
 const getRaw = url => {
   dataStr.value = "";
+  viewGist.disabled = true;
   const parts = url.split`/`;
   gistId = parts[parts.length - 4];
   fetch(url, {'cache-control': 'no-cache', cache: 'no-store'}).then(d => d.text()).then(r => {
     filename.innerHTML = url.split('/').pop().replace(/%20/g, " ");
     dataStr.value = r + "";
     d.show();
+    viewGist.disabled = false;
+    viewGist.href = `https://gists.github.com/${GithubApi.getUsername()}/${gistId}`;
   });
 };
 
@@ -162,13 +166,9 @@ const runCode = () => {
 const saveFile = () => {
   if (!gistId) return;
   saveFileBtn.disabled = true;
-  const username = GithubApi.getUsername();
-  const name = filename.innerHTML;
-  const files = {};
-  files[name] = { content: dataStr.value };
-  GithubApi.saveGist(gistId, JSON.stringify({files}))
-  .then(() => {
-    notify("success", `💾 Saved '${name}'`);
+  const fname = filename.innerHTML;
+  GithubApi.saveFile(gistId, fname, dataStr.value).then(() => {
+    notify("success", `💾 Saved '${fname}'`);
     saveFileBtn.disabled = false;
   });
 };
