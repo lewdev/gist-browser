@@ -57,22 +57,6 @@
     top: 9px;
     right: 9px;
   }
-  /* notify */
-  .notify {
-    position: fixed;
-    top: -5rem;
-    left: 20%;
-    width: 60%;
-    font-size: 1.5rem;
-    display: block;
-    white-space: normal;
-    animation: 2s 2 alternate slidein ;
-  }
-  @keyframes slidein {
-    from { top: -5rem; }
-    50% { top: 5%; }
-    to   { top: 5%; }
-  }
   .text-sm { font-size: .8rem }
   </style>
 </head>
@@ -120,52 +104,26 @@
     class="btn btn-secondary btn-sm rounded-circle">&times;</button>
 </div>
 
+<script src="util.js"></script>
 <script src="github-api.js"></script>
 <script>
-const spanTitle = (content, title) => `<span title="${title}">${content}</span>`;
-
-const dateDistance = dateStr => {
-  const TIME = [1e3, "s", 6e4, "min", 36e5, "hr", 864e5, "d", 2592e6, "wk", 2592e6, "mo", 31536e6, "yr"];
-  const now = new Date().getTime();
-  const date = new Date(dateStr);
-  const shortDateStr = date.toLocaleString();
-  let diff = now - date.getTime();
-  let agoOrUntil = " ago";
-  if (diff < 0) { agoOrUntil = " until"; diff = Math.abs(diff); }
-  for (let i = 12; i >= 0; i-=2) {
-    const t = TIME[i];
-    if (diff >= t) return spanTitle(~~(diff / t) + TIME[i + 1] + agoOrUntil, shortDateStr);
-  }
-  return spanTitle(diff + "ms" + agoOrUntil, shortDateStr);
-};
 let gistList, gistId, fileCache = {};
+
 const showLoading = _ => o.innerHTML = `<div class="spinner-border text-center" role="status"><span class="visually-hidden">Loading...</span></div>`;
 
-onload = _ => {
-  showLoading();
-  GithubApi.init(_ => {
-    if (!GithubApi.getToken()) saveFileBtn.disabled = true;
-    err.innerHTML = "";
-    GithubApi.getGists().then(d => {
-      gistList = d;
-      render();
-    });
-  })
-  .catch(e => {GithubApi.handleError(e); o.innerHTML = "";})
-};
-const notify = (type, message) => {
-  const NOTIFY_EMOJI = ["success", "🎉", "warning", "⚠️", "danger", "⛔", "info", "ℹ️"];
-  const index = NOTIFY_EMOJI.indexOf(type);
-  const elem = document.createElement('div');
-  elem.className = `notify badge bg-${type}`;
-  elem.innerHTML = (index >= 0 ? NOTIFY_EMOJI[index + 1] : "") + message;
-  document.body.appendChild(elem);
-  setTimeout(() => elem.parentNode.removeChild(elem), 5000);
-};
+const handleError = e => { notify("danger", e); GithubApi.handleError(e); };
 
-const formatNum = num => `<span class="badge bg-secondary" title="${num} chars">
-  ${num > 1e3 ? ~~(num / 1e3) + "k" : num}
-</span>`;
+onload = _ => GithubApi.init(_ => {
+  showLoading();
+  saveFileBtn.disabled = !GithubApi.getToken();
+  err.innerHTML = "";
+  GithubApi.getGists().then(d => {
+    gistList = d;
+    render();
+  })
+})
+.catch(e => {handleError(e); o.innerHTML = "";});
+
 const renderFiles = files => (
   `<ul>${files.map(f => `<li>📄 <button class="btn btn-light p-0 text-start"
       onclick="getRaw('${f.raw_url}')">${f.filename}</button> ${formatNum(f.size)}</li>`).join``}</ul>`
@@ -214,13 +172,15 @@ const saveFile = () => {
   saveFileBtn.disabled = true;
   const fname = filename.innerHTML;
   GithubApi.saveFile(gistId, fname, dataStr.value).then(data => {
-    if (!data.ok) { notify("danger", "ERROR: " + data.statusText); return; }
     notify("success", `💾 Saved '${fname}'`);
     saveFileBtn.disabled = false;
     const index = gistId + "/" + fname;
-    if (data.files[fname]) fileCache[index] = data.files[fname].content;
+    if (data.files && data.files[fname]) fileCache[index] = data.files[fname].content;
   })
-  .catch(error => notify("danger", error));
+  .catch(error => {
+    saveFileBtn.disabled = false;
+    notify("danger", error);
+  });
 };
 
 const getGist = url => {

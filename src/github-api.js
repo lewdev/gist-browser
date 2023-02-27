@@ -13,7 +13,7 @@ const MyCrypt = (() => {
   };
 })();
 
-const SET_TOKEN_BTN = label => (
+const showPromptBtn = label => (
   `<button class="btn btn-light btn-sm" onclick="GithubApi.showTokenPrompt()" title="Set Github Token">🎟${label ? " " + label : ""}</button>`
 );
 const HOW_TO_GEN_TOKEN =
@@ -52,27 +52,17 @@ const GithubApi = (() => {
     if ((error + "").includes("Unauthorized")) showTokenPrompt();
   };
 
-  const postFetch = fetchPromise => fetchPromise
-    .then(r => {
-      if (r.ok) return r.json();
-      const isUnauthorized = r.statusText === "Unauthorized";
-      Promise.reject(`ERROR: Status ${r.status} ${r.statusText}${isUnauthorized ? ` (invalid token) ${SET_TOKEN_BTN("Set Token")}` : ""}`)
-      return r;
-    })
-    .catch(handleError)
-  ;
+  const postFetch = fetchPromise => fetchPromise.then(r => {
+    if (r.ok) return r.json();
+    const isUnauthorized = r.statusText === "Unauthorized";
+    return Promise.reject(`${r.status} ${r.statusText}${isUnauthorized ? ` (invalid token) ${showPromptBtn("Set Token")}` : ""}`)
+  }).catch(handleError);
 
-  const get = (path, header = {}) => postFetch(fetch(`${API_URL}${path}`,{headers: {Authorization: token ? `token ${token}` : "", ...header}}));
+  const getHeader = (header = {}) => ({Authorization: token ? `token ${token}` : "", ...header});
 
-  const patch = (url, body) => postFetch(fetch(url, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `token ${token}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: JSON.stringify(body),
-  }));
+  const get = (path, header = {}) => postFetch(fetch(`${API_URL}${path}`,{headers: getHeader(header)}));
+
+  const patch = (url, body) => postFetch(fetch(url, {method: 'PATCH', headers: getHeader(), body: JSON.stringify(body)}));
 
   const showTokenPrompt = (show = true) => {
     let div = document.getElementById("tokenInstructions");
@@ -80,25 +70,28 @@ const GithubApi = (() => {
     else document.body.innerHTML += show ? HOW_TO_GEN_TOKEN : "";
   };
 
-  const formatGistData = data => (
-    (data || []).map(({ id, url, description, public, created_at, updated_at, files }) => ({
+  const formatGistData = data => {
+    if (!Array.isArray(data)) return [];
+    return (data || []).map(({ id, url, description, public, created_at, updated_at, files }) => ({
       id, url, description, public, created_at, updated_at, 
       files: Object.keys(files).map(key => {
         const { filename, raw_url, size, content } = files[key];
         return { filename, raw_url, size, content };
       })
     }))
-  );
+  };
+
 
   return {
-    init: loadDataArg => new Promise((res, rej) => {
+    init: loadDataArg => new Promise(res => {
       tokenStr = localStorage.getItem(STORAGE_KEY);
       loadData = loadDataArg;
       if (!tokenStr) { if (loadData) loadData(); res(); return; }
       token = MyCrypt.decrypt(SALT, tokenStr);
-      GithubApi.getUser().then(_ => {if (loadData) loadData(); res();});
-    }),
+      res();
+    }).then(_ => GithubApi.getUser().then(loadData ? loadData : 0)),
     handleError,
+    showPromptBtn,
     showTokenPrompt,
     hideTokenPrompt: () => showTokenPrompt(false),
     setToken: str => {
@@ -107,7 +100,7 @@ const GithubApi = (() => {
       tokenStr = MyCrypt.crypt(SALT, str);
       localStorage.setItem(STORAGE_KEY, tokenStr);
       showTokenPrompt(false);
-      GithubApi.getUser().then(_ => {if (loadData) loadData();});
+      GithubApi.init(loadData);
     },
     getToken: () => token,
     getUsername: () => username,
@@ -122,12 +115,7 @@ const GithubApi = (() => {
     saveFile: (gistId, filename, content) => {
       const files = {};
       files[filename] = { content };
-      return GithubApi.saveGist(gistId, {files}).then(result => {
-        if (result.message === "Bad credentials") {
-          Promise.reject("Invalid Github Token with incorrect permissions.");
-        }
-        return result;
-      });
+      return GithubApi.saveGist(gistId, {files});
     },
     // getRepos: cb => get(`/user/repos?per_page=100&type=public`)
     //   .then(data => data.map(d => (
